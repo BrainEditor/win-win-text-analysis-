@@ -1,0 +1,1033 @@
+---
+title: "winwin text analysis"
+author: "AJ Caughey"
+date: "5/29/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rvest)
+library(magrittr)
+library(data.table)
+library(lubridate)
+library(xml2)
+library(purrr)
+library(tidyr)
+library(tidyverse)
+library(ggthemes)
+```
+
+
+
+First we need to load in our data
+
+I'll start with the 双赢 台湾 search, because it only returns two results. 
+This should be an easier place to practice with. 
+
+```{r loading data}
+peoples_daily_archived_page <- "http://data.people.com.cn/rmrb/s?type=1&qs=%7B%22cds%22%3A%5B%7B%22cdr%22%3A%22AND%22%2C%22cds%22%3A%5B%7B%22fld%22%3A%22title%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22AND%22%2C%22qtp%22%3A%22DEF%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2+%E5%8F%B0%E6%B9%BE%22%7D%2C%7B%22fld%22%3A%22subTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22false%22%2C%22vlr%22%3A%22AND%22%2C%22qtp%22%3A%22DEF%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2+%E5%8F%B0%E6%B9%BE%22%7D%2C%7B%22fld%22%3A%22introTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22false%22%2C%22vlr%22%3A%22AND%22%2C%22qtp%22%3A%22DEF%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2+%E5%8F%B0%E6%B9%BE%22%7D%5D%7D%5D%2C%22obs%22%3A%5B%7B%22fld%22%3A%22dataTime%22%2C%22drt%22%3A%22DESC%22%7D%5D%7D"
+
+peoples_daily_archived <- read_html(peoples_daily_archived_page)
+```
+
+
+
+Now, we can try and identify the nodes we are interested in. Let's just start with the article itself first. 
+
+```{r article node trial}
+
+str(peoples_daily_archived)
+
+body_nodes <- peoples_daily_archived %>% 
+  html_node("body") %>% 
+  html_children()
+
+body_nodes %>% 
+  html_children()
+```
+What's the html code structure?
+
+The nodes for all articles results are <div class="sreach_li">
+
+Within that, the date is <div class="listinfo"
+
+Keywords:   <div class="keywords">...</div>  then " some text " then they are surrounded in the following code <a href="#">卫生</a>
+
+
+We can use xml_find_all to find all the div nodes in the body of the document that have a class name containing the class names we want 
+
+
+
+
+```{r tracking down key nodes}
+dates <- peoples_daily_archived %>% 
+  html_nodes('body') %>% 
+  xml_find_all("//div[contains(@class, 'listinfo')]") %>% 
+  html_text()
+
+key_word_tags <- peoples_daily_archived %>% 
+  html_nodes('body') %>% 
+  xml_find_all("//div[contains(@class, 'keywords')]") %>% 
+  html_text()
+
+headline <- peoples_daily_archived %>% 
+  html_nodes('body') %>% 
+  xml_find_all("//a[contains(@class, 'open_detail_link')]") %>% 
+  html_text()
+
+```
+
+Now that we have our vectors, we'll stitch them all into a data frame 
+
+```{r data frame making}
+peoples_daily_df <- data.frame(headline, dates, key_word_tags) 
+```
+
+Next, we need to write a function to automate this on one people's daily archive webpage. In subsequent steps, we will iterate that function over multiple functions
+
+```{r making a scraping function}
+get_article_keys_dates <- function(webpage = "url") { 
+  
+  #progress indicator
+  cat("boom")
+  
+  #get url from input and read html 
+  input <- read_html(webpage)
+  
+  #scrape data 
+  dates <- input %>% 
+  html_nodes('body') %>% 
+  xml_find_all("//div[contains(@class, 'listinfo')]") %>% 
+  html_text()
+
+key_word_tags <- input %>% 
+  html_nodes('body') %>% 
+  xml_find_all("//div[contains(@class, 'keywords')]") %>% 
+  html_text
+
+headline <- input %>% 
+  html_nodes('body') %>% 
+  xml_find_all("//a[contains(@class, 'open_detail_link')]") %>% 
+  html_text
+
+#create dataframe
+peoples_daily_df <- data.frame(headline, dates, key_word_tags) 
+
+peoples_daily_df
+
+}
+
+```
+
+let's test that function - it worked! 
+
+Some cleaning notes here: 
+  1. we will need to clean to get standard dates
+  2. there's extra junk in key words variable
+    a. need to drop standard shared tag 
+    b. need to create multiple columns for each key word 
+      i. key word 1, key word 2, key word 3, key word 4 at least 
+      ii. each key word is seperated by a space so this should be OK
+      
+    
+```{r testing scrape function for one page}
+df_from_function_test <- get_article_keys_dates(webpage = "http://data.people.com.cn/rmrb/s?type=1&qs=%7B%22cds%22%3A%5B%7B%22cdr%22%3A%22AND%22%2C%22cds%22%3A%5B%7B%22fld%22%3A%22title%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22AND%22%2C%22qtp%22%3A%22DEF%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2+%E5%8F%B0%E6%B9%BE%22%7D%2C%7B%22fld%22%3A%22subTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22false%22%2C%22vlr%22%3A%22AND%22%2C%22qtp%22%3A%22DEF%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2+%E5%8F%B0%E6%B9%BE%22%7D%2C%7B%22fld%22%3A%22introTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22false%22%2C%22vlr%22%3A%22AND%22%2C%22qtp%22%3A%22DEF%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2+%E5%8F%B0%E6%B9%BE%22%7D%5D%7D%5D%2C%22obs%22%3A%5B%7B%22fld%22%3A%22dataTime%22%2C%22drt%22%3A%22DESC%22%7D%5D%7D")
+
+```
+
+Next, we iterate that function over all the pages for a search result. 
+
+I could improve this by generalizing. If I scrape the first and last page numbers from the website, and put that in my function, I could maybe use that value to replace the manually enetered digits. All the pages chop off the page No at the same spot, so then I'd just have to enter the URL for my search at that should work to generalize. 
+
+```{r iterating function over page range}
+#iterate over page functions
+
+seperate_pages_as_df <- lapply(paste0("http://data.people.com.cn/rmrb/s?qs=%7B%22cds%22%3A%5B%7B%22cdr%22%3A%22AND%22%2C%22cds%22%3A%5B%7B%22fld%22%3A%22title%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%85%B1%E8%B5%A2%22%7D%2C%7B%22fld%22%3A%22subTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%85%B1%E8%B5%A2%22%7D%2C%7B%22fld%22%3A%22introTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%85%B1%E8%B5%A2%22%7D%5D%7D%5D%2C%22obs%22%3A%5B%7B%22fld%22%3A%22dataTime%22%2C%22drt%22%3A%22DESC%22%7D%5D%7D&tr=A&ss=1&pageNo=", 1:44),
+       get_article_keys_dates)
+
+```
+
+
+```{r generalizing scraping over multiple pages}
+
+generalize_page_range_example <- "http://data.people.com.cn/rmrb/s?qs=%7B%22cds%22%3A%5B%7B%22cdr%22%3A%22AND%22%2C%22cds%22%3A%5B%7B%22fld%22%3A%22title%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2%22%7D%2C%7B%22fld%22%3A%22subTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2%22%7D%2C%7B%22fld%22%3A%22introTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2%22%7D%5D%7D%5D%2C%22obs%22%3A%5B%7B%22fld%22%3A%22dataTime%22%2C%22drt%22%3A%22DESC%22%7D%5D%7D&tr=A&ss=1&pageNo=1&pageSize=20"
+
+#this removes the "No=" piece, so we will need to put that back in 
+
+cut_pd_url <- function(pd_url = "pd link") { 
+ cut_url <- str_replace(pd_url, "No=.*&pageSize=20$", "No=")  
+ 
+ cut_url 
+ 
+}
+
+
+
+seperate_pages_as_df_function <- function (url = "pd link", last_page = "final_page") { 
+  cut_url <- cut_pd_url(url)
+  
+  list_of_df <- lapply(paste0(cut_url, 1:last_page), get_article_keys_dates)
+  
+  . <- bind_rows(list_of_df)
+  }
+
+#test, works 
+shuangying <- seperate_pages_as_df_function("http://data.people.com.cn/rmrb/s?qs=%7B%22cds%22%3A%5B%7B%22cdr%22%3A%22AND%22%2C%22cds%22%3A%5B%7B%22fld%22%3A%22title%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2%22%7D%2C%7B%22fld%22%3A%22subTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2%22%7D%2C%7B%22fld%22%3A%22introTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2%22%7D%5D%7D%5D%2C%22obs%22%3A%5B%7B%22fld%22%3A%22dataTime%22%2C%22drt%22%3A%22DESC%22%7D%5D%7D&tr=A&ss=1&pageNo=1&pageSize=20", 22)
+
+```
+
+
+I now have a list of 20 dataframe with all the information I need, lets combine them into one dataframe. 
+Super easy 
+
+
+```{r merging to one dataframe}
+gongying_all <- bind_rows(seperate_pages_as_df)
+```
+
+Now, we clean. I put my generalized 
+
+First, lets check the data types of everything, and see if we have any NA values. 
+Then, cleaning up dates should be the easiest place to start. 
+
+We're going to need to substring out the keywords and create new columns, which could take some time. 
+
+
+```{r dates cleaning}
+str(gongying_all)  #all characters, that's good. looks like we have text junk we might want to get rid of 
+
+#cleaning out the /t and /r noise 
+gongying_all$dates <- str_squish(gongying_all$dates)
+gongying_all$key_word_tags <- str_squish(gongying_all$key_word_tags)
+
+#converting to ymd dates, no characters 
+  #remember single digit months/days have no empty 0 in front, need optional values in substring
+
+#example date: 2020年5月19日第3版 【浏览本版】
+
+gongying_all$dates <- str_extract_all(gongying_all$dates, "\\d\\d\\d\\d.\\d?\\d.\\d?\\d")      #strip dates down to just date text
+
+gongying_all$year <- str_extract_all(gongying_all$dates, "\\d\\d\\d\\d") %>% #year 
+  as.numeric()
+
+gongying_all$day <- str_extract(string =  gongying_all$dates, "\\d?\\d$") %>% #mday 
+  as.numeric() 
+
+gongying_all$month <- str_extract_all(gongying_all$dates, "\\d?\\d月")  %>%   #month
+                                str_extract_all("\\d?\\d") %>% 
+                                      as.numeric()
+
+gongying_all <- gongying_all %>%     #remove old column with characters 
+   select(-dates)
+
+gongying_all$date <- paste(gongying_all$year, gongying_all$month, gongying_all$day, sep = "-") %>% #stitch date back together, cleaned
+           ymd() %>% 
+           as.Date()
+```
+
+We've cleaned dates, now we use some of the same tools to clean up keywords. 
+
+Remember, we want to make multiple columns for each key word. Keywords are seperated by spaces. 
+
+```{r keywords cleaning}
+
+#lets start by droping the junky tag at the beginning 
+
+#example entry      文章关键词： 合作 “一带一路” 塞尔维亚
+
+gongying_all$test_keywords <- str_extract_all(gongying_all$key_word_tags, "[^文章关键词]")  #not right, creaing a vector
+
+gongying_all$key_word_tags <- str_remove_all(gongying_all$key_word_tags, "^.......")
+
+#create new columns for each keyword 
+gongying_all<- gongying_all %>% 
+  separate(key_word_tags, c("tag_1", "tag_2", "tag_3"),
+           sep = " ", 
+           remove = FALSE,
+           extra = "warn", 
+           fill = "warn")
+
+gongying_all <- gongying_all %>%          #drop columns we don't need anymore 
+  select(-key_word_tags, -test_keywords)
+```
+
+
+```{r shuangying manual cleaning to prep for general}
+
+#manual on shuangying
+shuangying$dates <- str_squish(shuangying$dates)                #remove noise
+shuangying$key_word_tags <- str_squish(shuangying$key_word_tags)
+
+shuangying$dates <- str_extract_all(shuangying$dates, "\\d\\d\\d\\d.\\d?\\d.\\d?\\d")      #strip dates down to just date text
+shuangying$years <- str_extract_all(shuangying$dates, "\\d\\d\\d\\d") %>% #year 
+  as.numeric()
+shuangying$day <- str_extract(string =  shuangying$dates, "\\d?\\d$") %>% #mday 
+  as.numeric() 
+shuangying$month <- str_extract_all(shuangying$dates, "\\d?\\d月")  %>%   #month
+                                str_extract_all("\\d?\\d") %>% 
+                                      as.numeric()
+
+shuangying <- shuangying %>%     #remove old column with characters 
+   select(-dates)
+
+shuangying$date <- paste(shuangying$years, shuangying$month, shuangying$day, sep = "-") %>% #stitch date back together, cleaned
+           ymd() %>% 
+           as.Date()
+
+shuangying$key_word_tags <- str_remove_all(shuangying$key_word_tags, "^.......")
+
+shuangying <- shuangying %>% 
+    separate(key_word_tags, c("tag_1", "tag_2", "tag_3"),
+           sep = " ", 
+           remove = TRUE,
+           extra = "warn", 
+           fill = "warn")
+
+```
+
+```{r generalizing cleaning}
+
+
+clean_pd_scraped <- function(pd_data_frame) { 
+
+  
+  df <- pd_data_frame
+  
+
+
+df$dates <- str_squish(df$dates)                #remove noise
+df$key_word_tags <- str_squish(df$key_word_tags)
+
+df$dates <- str_extract_all(df$dates, "\\d\\d\\d\\d.\\d?\\d.\\d?\\d")      #strip dates down to just date text
+df$years <- str_extract_all(df$dates, "\\d\\d\\d\\d") %>% #year 
+  as.numeric()
+df$day <- str_extract(string =  df$dates, "\\d?\\d$") %>% #mday 
+  as.numeric() 
+df$month <- str_extract_all(df$dates, "\\d?\\d月")  %>%   #month
+                                str_extract_all("\\d?\\d") %>% 
+                                      as.numeric()
+
+df <- df %>%     #remove old column with characters 
+   select(-dates)
+
+df$date <- paste(df$years, df$month, df$day, sep = "-") %>% #stitch date back together, cleaned
+           ymd() %>% 
+           as.Date()
+
+df$key_word_tags <- str_remove_all(df$key_word_tags, "^.......")
+
+df <- df %>% 
+    separate(key_word_tags, c("tag_1", "tag_2", "tag_3"),
+           sep = " ", 
+           remove = TRUE,
+           extra = "warn", 
+           fill = "warn")
+df 
+}
+
+#combing scraping and cleaning into one function 
+scrape_and_clean_pd <- function(url = "pd link", last_page = "last page number") {
+  
+df <- seperate_pages_as_df_function(url, last_page)
+
+df <- clean_pd_scraped(df)
+
+df
+}
+
+
+#test with new search  双赢合作
+#two step test, scrape then clean in seperate funcitons
+
+shuangying_hezuo <- seperate_pages_as_df_function("http://data.people.com.cn/rmrb/s?qs=%7B%22cds%22%3A%5B%7B%22cdr%22%3A%22AND%22%2C%22cds%22%3A%5B%7B%22fld%22%3A%22title%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2+%E5%90%88%E4%BD%9C%22%7D%2C%7B%22fld%22%3A%22subTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2+%E5%90%88%E4%BD%9C%22%7D%2C%7B%22fld%22%3A%22introTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2+%E5%90%88%E4%BD%9C%22%7D%5D%7D%5D%2C%22obs%22%3A%5B%7B%22fld%22%3A%22dataTime%22%2C%22drt%22%3A%22DESC%22%7D%5D%7D&tr=A&ss=1&pageNo=1&pageSize=20", 4)
+
+shuangying_hezuo <- clean_pd_scraped(shuangying_hezuo)
+
+#test with another new search yidaiyilu 
+#combining scraping and cleaning into one function
+
+
+
+#this function works but the connection often times out if I make too many requests. This has 100 pages so it probably will never make it. Here's 2 years of BRI data though. In total there are 100*20 articles starting from 2013. 
+
+
+
+```  
+
+
+Now we can start doing the actual analysis!
+
+Let's start by looking first at how usage of gongying has change over time. Do this by year first, then we can decide if by month is viable/useful over a certain range of time. 
+
+After we get a sense of change over time, we can break it down and look at keywords. 
+
+
+
+A note about gongying - including both article text and headlines, there are only 13 mentions of this word from 1946 until 2000, thats out of 12919 results in total. There are about 25 results for shuangying over the same time period, and 6826 results in total. 
+
+共赢 seems to be the more formal term  - in the SCIO white paper China's National Defense in the New Era, 共赢 is included 6 times but 双赢 isn't mentioend at all.  
+
+Usage of both these terms in PD really only started in 1999/2000, right around when China joined the WTO (2001). I wonder 
+what those early articles are about. It would be good to check the keyword tags on them as we get into our analysis. 
+
+I'll also want to plot they keyword usage over time. 
+
+
+Usage of gongying seems to have jumped up a bit after bri. Let's check averages. 
+
+It took a huge hit in 2016 - related to trump admin? How did it change in relationship to the tradewar? 
+
+
+*small but discernable jumps in 2010 in both terms, but also recent declines in both - though shuangying was declining for several years *
+
+```{r exploring}
+
+#how has frequency of the term changed over time? 
+
+#last cleaning to standardize gongying with our function 
+gongying <- gongying_all %>% 
+  rename("years" = year)
+
+obama_trump_gongying <- gongying %>% 
+  filter(years >= 2008) %>%
+  group_by(years) %>%
+  summarise(total_mentions = n()) %>% 
+  print()
+
+mean(obama_trump_gongying$total_mentions[1:8])  #obama 55.875
+mean(obama_trump_gongying$total_mentions[9:13])  #trump 63 
+
+
+#gongying 
+gongying %>% 
+  group_by(years) %>% 
+  summarise(total_mentions = n()) %>% 
+  filter(years != "2020") %>%
+  ggplot(aes(x = years, y = total_mentions)) + 
+  geom_bar(stat = "identity") + 
+  geom_smooth(se = FALSE) +
+  labs(title = "'Win-Win' in People's Daily Headlines Over Time (gongying)",  subtitle = "2000 to 2019") + 
+  xlab("year") + 
+  ylab("Total Headlines with gongying") +
+  theme_economist_white()
+
+
+#shuangying 
+shuangying %>% 
+  group_by(years) %>% 
+  filter(years != "2020") %>%
+  summarise(total_mentions = n()) %>% 
+  ggplot(aes(x = years, y = total_mentions)) + 
+  geom_bar(stat = "identity") + 
+  geom_smooth(se = FALSE) +
+  labs(title = "'Win-Win' in People's Daily Headlines Over Time (shuangying)", subtitle = "2000 to 2019") + 
+  xlab("year") + 
+  ylab("Total Headlines with shuangying") + 
+  theme_economist_white()
+```
+
+Now we need to start looking at the keyword analysis. 
+
+Lets sett what keywords are used most often in articles about gongying
+
+Then lets see how some of the most common key words have changed over time. 
+
+I need to count observations that are split across 4 different columns 
+
+
+
+
+```{r keywords exploration}
+
+#top keywords all time 
+common_keys_1 <- gongying %>%
+  group_by(tag_1) %>% 
+  summarise(count = n()) 
+
+commong_keys_2 <- gongying %>%
+  group_by(tag_2) %>% 
+  summarise(count = n()) 
+
+common_keys_3 <- gongying %>%
+  group_by(tag_3) %>% 
+  summarise(count = n()) 
+
+key_word_totals <- full_join(common_keys_1, commong_keys_2, by = c("tag_1" = "tag_2")) %>% 
+  full_join(common_keys_3, by = c("tag_1" = "tag_3")) %>%
+  mutate(count.x = ifelse(!is.na(count.x), count.x, 0), 
+         count.y = ifelse(!is.na(count.y), count.y, 0), 
+         count = ifelse(!is.na(count), count, 0), 
+         total_mentions = count.x + count.y + count,
+         rank = rank(-total_mentions)) %>%
+    rename("tag" = tag_1) %>% 
+  select(tag, total_mentions, rank) %>% 
+  arrange(desc(rank)) %>%
+    print() 
+
+
+#keywords over time
+common_keys_1_years <- gongying %>%
+  group_by(tag_1, years) %>% 
+  summarise(count = n()) %>%
+  mutate(id = str_c(tag_1, years)) 
+
+commong_keys_2_years <- gongying %>%
+  group_by(tag_2, years) %>%        
+  summarise(count = n()) %>%
+  mutate(id = str_c(tag_2, years)) 
+
+common_keys_3_years <- gongying %>%
+  group_by(tag_3, years) %>% 
+  summarise(count = n()) %>%
+  mutate(id = str_c(tag_3, years)) 
+
+
+key_word_totals_yearly <- left_join(common_keys_1_years, commong_keys_2_years, by = "id")
+key_word_totals_yearly <- left_join(key_word_totals_yearly, common_keys_3_years, by = "id") %>%
+  mutate(count.x = ifelse(!is.na(count.x), count.x, 0), 
+         count.y = ifelse(!is.na(count.y), count.y, 0), 
+         count = ifelse(!is.na(count), count, 0), 
+         total_mentions = count.x + count.y + count,
+         rank = as.integer(rank(-total_mentions))) %>% 
+    rename("tag" = tag_1, "year" = years.x) %>% 
+  select(tag, year, total_mentions, rank) %>% 
+  arrange(desc(total_mentions)) %>%
+    print() 
+```
+
+
+*idea* there are lots of bilateral relations in here. Which ones is "win-win" cooperation most mentioned?
+  can I use regex to look for all mentions of anything that ends in guanxi, and sum that total up? 
+```{r extract "guanxi"}
+
+#this section removes anything before guanxi 
+#most of these entries are bilateral relations witha  country. if we include them as a new category
+#how does the data change? 
+
+#new dataframe to work with this question so I don't mess previous df up 
+gongying_bilat <- gongying
+
+gongying_bilat$tag_1 <- str_replace(gongying$tag_1, "中.*关系$", "关系")
+gongying_bilat$tag_2 <- str_replace(gongying$tag_2, "中.*关系$", "关系")
+gongying_bilat$tag_3 <- str_replace(gongying$tag_3, "中.*关系$", "关系")
+
+#preping columns 
+common_keys_1_years_bilat <- gongying_bilat %>%
+  group_by(tag_1, years) %>% 
+  summarise(count = n()) %>%
+  mutate(id = str_c(tag_1, years)) 
+
+commong_keys_2_years_bilat <- gongying_bilat %>%
+  group_by(tag_2, years) %>% 
+  summarise(count = n()) %>%
+  mutate(id = str_c(tag_2, years)) 
+
+common_keys_3_years_bilat <- gongying_bilat %>%
+  group_by(tag_3, years) %>% 
+  summarise(count = n()) %>%
+  mutate(id = str_c(tag_3, years)) 
+
+#totals all time
+key_word_totals_bilat <- full_join(common_keys_1, commong_keys_2, by = c("tag_1" = "tag_2")) %>% 
+  full_join(common_keys_3, by = c("tag_1" = "tag_3")) %>%
+  mutate(count.x = ifelse(!is.na(count.x), count.x, 0), 
+         count.y = ifelse(!is.na(count.y), count.y, 0), 
+         count = ifelse(!is.na(count), count, 0), 
+         total_mentions = count.x + count.y + count,
+         rank = rank(-total_mentions)) %>%
+    rename("tag" = tag_1) %>% 
+  select(tag, total_mentions) %>% 
+  arrange(desc(total_mentions)) %>%
+    print() 
+
+#over time
+key_word_totals_yearly_bilat <- left_join(common_keys_1_years_bilat, commong_keys_2_years_bilat, by = "id") %>%
+  left_join(common_keys_3_years_bilat, by = "id") %>%
+  mutate(count.x = ifelse(!is.na(count.x), count.x, 0), 
+         count.y = ifelse(!is.na(count.y), count.y, 0), 
+         count = ifelse(!is.na(count), count, 0), 
+         total_mentions = count.x + count.y + count,
+         rank = as.integer(rank(-total_mentions))) %>% 
+    rename("tag" = tag_1, year = years.x) %>% 
+  select(tag, years, total_mentions, rank) %>% 
+  arrange(desc(total_mentions)) %>%
+    print() 
+```
+
+Ok now that we have the data we can start to plot and explore it visually
+
+
+
+
+Plotting in chinese characters means changing the font input and output for r, these next several chunks try to do that
+
+
+```{r plotting keyword analysis}
+
+#lets look at the top 20 
+
+common_keys <- key_word_totals %>% 
+  filter(!is.na(tag)) %>% 
+  filter(total_mentions >= 15)
+
+
+#need english to show on ggplot 
+english_common_keys <- c( 
+"China",
+"Dialogue",
+"Adhere/Support",				
+"Shared Development",				
+"Culture",
+"Initiative",
+"Market",
+"Peace",
+"Investment",
+"Innovation",
+"International",
+"Summit meeting",
+"Sino-US relations",				
+"Business",
+"Economy",
+"Construct/Construction",
+"win-win",				
+"Mutual benefit",
+"Belt and Road",
+"Cooperation")
+
+common_keys <- cbind(common_keys, english_common_keys) %>% 
+  rename("tag_english" = english_common_keys) %>%
+  select(tag, tag_english, total_mentions, rank) %>% 
+  print()
+
+
+common_topics_plot <- common_keys %>% 
+  filter(tag_english != "China" , tag_english != "Adhere/Support" , 
+         tag_english != "win-win" , tag_english != "Cooperation", 
+         tag_english != "Mutual benefit") %>% 
+  ggplot(aes(x = reorder(tag_english, total_mentions), y = total_mentions)) + 
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "What's The Topic of Articles with 'Win-Win' in the Headline?") +
+  xlab("Article Keyword Topic") +
+  ylab("Total Articles including gongtong")
+  theme(axis.text.x=element_text(angle = -90, hjust = .05)) +
+  theme_fivethirtyeight()
+  
+  common_topics_plot
+  
+  
+#lets do this again, but including all the bilaterial   
+  
+```
+
+The chart above is useful, it tells us what topics win-win is generally applied to. 
+
+How have some of the most common topics usage changed over time? 
+
+
+```{r important key trends over time}
+
+#I have data for each trend by year, I can use geom_line for that 
+
+
+english_common_keys <- common_keys %>% 
+  select(tag, tag_english) 
+
+important_keys_over_time <- left_join(key_word_totals_yearly, english_common_keys, by = "tag") %>% 
+  select(tag, tag_english, year, total_mentions) %>% 
+  filter(tag_english == "Belt and Road" | tag_english == "Construct/Construction" | 
+         tag_english == "Economy" | tag_english == "Sino-US relations") 
+
+
+important_topics_yearly <- ggplot(important_keys_over_time, (aes(x=year, y=total_mentions, color = tag_english))) + 
+  geom_line() +
+  labs(title = "How Did 'Win-Win' Usage Change For Frequent Topics?", color = "Article Topics") +
+  xlab("year") +
+  ylab("Total Articles Including 'Win-Win'") + 
+  scale_x_continuous(breaks = seq(2000, 2020, 1)) + 
+  theme_fivethirtyeight() + 
+  theme(plot.title = element_text(size = 10))
+
+important_topics_yearly
+
+
+```
+
+
+
+What common policies and issue areas, besides one-belt/one-road are discussed alongside?
+
+
+
+What countries does China stress win win cooperation with? 
+```{r bilaterial country analysis}
+
+#creating larger group for africa 
+key_word_totals_bilat_africa <- key_word_totals_bilat
+
+key_word_totals_bilat_africa$tag <- str_replace(key_word_totals_bilat$tag, ".*中非.*", "中非关系") 
+
+africa_total_mentions <- key_word_totals_bilat_africa %>% 
+  summarise(total_mentions = sum(ifelse(tag == "中非关系", total_mentions, 0), na.rm = TRUE)) %>% 
+  mutate(tag = "中非关系") %>% 
+  select(tag, total_mentions)
+
+key_word_totals_bilat_africa$tag <- str_replace(key_word_totals_bilat$tag, ".*中非.*", "africa") 
+
+
+bilat_africa_country_summary <- key_word_totals_bilat_africa %>% 
+  filter(str_detect(tag, '关系')) %>% 
+  rbind(africa_total_mentions) %>%
+  print()
+  
+english_country_keys <- c(
+  "US",				
+"Germany", 
+"International relations",
+"India",
+"France",
+"Japan",
+"Kazakhstan",
+"Latin America",
+"Korea", 
+"Arab", 
+"Russian",
+"Pakistan",
+"Europe",
+"Myanmar",
+"Zambia",
+"Greece",
+"Switzerland", 
+"Sino-Vietnamese", 
+"Nepal",
+"Romania",
+"Great powers",
+"West",
+"South Africa",
+"Economic relations",
+"Cross-Strait Economy",
+"Rwanda",
+"EU", 
+"Poland",
+"Soviet",
+"Partnerships",
+"Croatia",
+"Cyprus",
+"Cambodia",
+"Australia",
+"Belarus",
+"Jordan",
+"Mozambique", 
+"Mexico", 
+"Strategic partnership",
+"Political", 
+"Kyrgyzstan", 
+"Buddhist",
+"Austria",
+"Victoria",
+"Singapore",
+"Thailand",
+"Finland",
+"Mongolia", 
+"Africa") 
+
+
+
+
+
+bilat_africa_country_summary <- cbind(bilat_africa_country_summary, english_country_keys) %>% 
+    rename("tag_english" = english_country_keys) %>%
+  select(tag, tag_english, total_mentions) %>% 
+  print()
+
+
+#plot data 
+
+bilat_summary_plot <- bilat_africa_country_summary  %>% 
+  filter(total_mentions >= 5, tag_english != "International relations") %>% 
+  ggplot(aes(x = reorder(tag_english, total_mentions), y = total_mentions)) + 
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "What International Relationships Are 'Win-Win' Headlines About?") +
+  xlab("Bilaterial Relationships") +
+  ylab("Total Articles Including 'Win-Win' gongtong")
+  theme(axis.text.x=element_text(angle = -90, hjust = .05)) +
+  theme_fivethirtyeight() + 
+  theme(plot.title = element_text(size = 8))
+  
+bilat_summary_plot
+
+
+```
+
+
+In win-win articles about Germany (and maybe Japan), what are the most frequent topics? How does this differ from articles about africa? 
+
+
+
+How would I do this in R? I think we'd want to group by country tag and then group by keyword. 
+We could make a binary variable for the countries I'm interested in, and then group by keyword?
+
+```{r }
+#previous code 
+#we'd want to take 
+
+#new dataframe with africa relationships recoded
+gongying_dev_country <- gongying_all
+gongying_dev_country$tag_1 <- str_replace(gongying$tag_1, ".*中非.*", "中非关系") 
+gongying_dev_country$tag_2 <- str_replace(gongying$tag_2, ".*中非.*", "中非关系") 
+gongying_dev_country$tag_3 <- str_replace(gongying$tag_3, ".*中非.*", "中非关系") 
+
+#mutate for binary variables indicating region of interest
+germany_japan_africa <- gongying_dev_country %>% 
+  mutate(country = ifelse(str_detect(gongying_dev_country$tag_1, pattern = "中德关系") == TRUE,
+                                "Germany",
+                          ifelse(str_detect(gongying_dev_country$tag_2, pattern = "中德关系") == TRUE,
+                                "Germany",
+                                ifelse(str_detect(gongying_dev_country$tag_3, pattern = "中德关系") == TRUE,
+                                "Germany", 0))), 
+         country = ifelse(str_detect(gongying_dev_country$tag_1, pattern = "中日关系") == TRUE,
+                                "Japan",
+                          ifelse(str_detect(gongying_dev_country$tag_2, pattern = "中日关系") == TRUE,
+                                "Japan",
+                                ifelse(str_detect(gongying_dev_country$tag_3, pattern = "中日关系") == TRUE,
+                               "Japan", country))),
+         country = ifelse(str_detect(gongying_dev_country$tag_1, pattern = "中非关系") == TRUE,
+                                "Africa",
+                          ifelse(str_detect(gongying_dev_country$tag_2, pattern = "中非关系") == TRUE,
+                                "Africa",
+                                ifelse(str_detect(gongying_dev_country$tag_3, pattern = "中非关系") == TRUE,
+                               "Africa", country)))) %>% 
+  filter(!is.na(country), country != "0") 
+
+
+gja_common_topics_1 <- germany_japan_africa %>%
+  group_by(country, tag_1) %>% 
+  summarise(count = n()) 
+
+gja_common_topics_2 <- germany_japan_africa %>%
+  group_by(country, tag_2) %>% 
+  summarise(count = n()) 
+
+gja_common_topics_3 <- germany_japan_africa %>%
+  group_by(country, tag_3) %>% 
+  summarise(count = n())
+
+#totals all time
+gja_topics_totals <- full_join(gja_common_topics_1, gja_common_topics_2, 
+                               by = c("country", "tag_1" = "tag_2")) %>% 
+  full_join(gja_common_topics_3, by = c("country", "tag_1" = "tag_3")) %>% 
+  mutate(count.x = ifelse(!is.na(count.x), count.x, 0), 
+         count.y = ifelse(!is.na(count.y), count.y, 0), 
+         count = ifelse(!is.na(count), count, 0), 
+         total_mentions = count.x + count.y + count,
+         rank = rank(-total_mentions)) %>%
+    rename("tag" = tag_1) %>% 
+  select(country, tag, total_mentions, rank) %>% 
+  arrange(country, rank) %>%
+    print() 
+
+#we need an english key to graph this, lets get all unique tags first 
+gja_topics_totals$tag %>% 
+  as.data.frame()
+
+gja_topics_totals$tag_english <- c(
+"China-Africa relations",
+"win-win",				
+"Develop together",				
+"Friendship",
+"Mutual benefit",
+"China",
+"Business",
+"Community of Destiny",
+"Neocolonialism",
+"access",
+"Commentator",
+"Africa-China Cooperation",
+"Policy",
+"Economy",
+"Economic and Trade Cooperation",				
+"Condemn",
+"Sino-German relations",
+"Cooperation",				
+"Business", 
+"Mutual benefit", 
+"Make a big cooperation cake",
+"Chinese Dream",
+"win-win", 
+"Innovation", 
+"Friendship",
+"Preh Automotive Company",
+"Investment",
+"EU", 
+"China-Japan Relationship",
+"Cooperation",
+"Exchange",
+"Expand Reopening",				
+"China Korea Relationship",
+"Mutual benefit", 
+"Meeting",
+"win-win",
+"Dialouge") 
+
+
+
+#plotting
+gja_topics_polot <-  gja_topics_totals  %>% 
+ filter(tag_english != "China-Africa relations", tag_english != "Sino-German relations", 
+        tag_english != "China-Japan Relationship", tag_english!= "win-win", 
+        tag_english != "Mutual benefit", tag_english != "Policy", 
+        tag_english != "Make a big cooperation cake", tag_english != "EU", 
+        tag_english != "China", tag_english != "Africa-China Cooperation", 
+        tag_english != "China dream", tag_english != "Commentator", 
+        tag_english != "Cooperation") %>% 
+  mutate(tag = ifelse(tag == "经济", "经贸合作", tag), 
+         tag_english = ifelse(tag == "经贸合作", "Economic and Trade Cooperation", tag_english)) %>% 
+  ggplot(aes(x = reorder(tag_english, total_mentions), y = total_mentions)) + 
+  geom_bar(stat = "identity") +
+  facet_grid(~country) +
+  coord_flip() +
+  labs(title = "How do Win-Win Article Key Topics Differ for Germany, Japan, and Africa?", subtitle = 
+         "Developmental Win-Wins With Africa, Business Partnerships with Germany, General Dialouge with Japan") +
+  xlab("Tagged Topic") +
+  ylab("Total Keywords Paired with Region") + 
+  theme(plot.title = element_text(size = 10), plot.subtitle = element_text(size = 7))
+  
+gja_topics_polot
+
+```
+
+
+
+
+
+
+What key policies/terms come up in articles that mention 'win-win's? 
+  Lets look at: 
+    Belt and Road - 121  
+    Community of Common Destinty - a few 
+    China Model 
+    Trade War - 0 
+    Free Trade - 0 
+    confucious institute - 0 
+    shanghai cooperation organization - 0 
+    hong kong  - 2
+    united nations - 2 
+    trump - 0 
+    PLA - 0 
+    coronavirus - 0 
+    RCEP - 0 
+    TPP -  0 
+    AIIB - 0 
+    pudong leadership academy - 0
+
+```{r policies in headlines}
+
+#text example:   全球战疫没有输赢只有共赢（钟声）
+
+#we basically just want to extract antyhing that contains what we are interested in
+
+headline_binaries <- gongying_all %>% 
+  mutate(belt_and_road = ifelse(str_detect(gongying_all$headline, 
+                                           pattern = "一带一路") == TRUE,
+                                1, 0), 
+         community_of_common_destnity = ifelse(str_detect(gongying_all$headline, 
+                                                     pattern = "人类命运共同体") == TRUE,
+                                          
+                                1, 0),
+         financial_crisis = ifelse(str_detect(gongying_all$headline, pattern = "金融危机") == TRUE,
+                                1, 0), 
+         xi_jinping = ifelse(str_detect(gongying_all$headline, pattern = "习近平") == TRUE,
+                                1, 0), 
+         go_out_policy = ifelse(str_detect(gongying_all$headline, pattern = "走出去") == TRUE,
+                                1, 0), 
+         hu_jintao = ifelse(str_detect(gongying_all$headline, pattern = "胡锦涛") == TRUE,
+                                1, 0), 
+         opening_up = ifelse(str_detect(gongying_all$headline, pattern = "开放") == TRUE,
+                                1, 0),  
+         exchange =ifelse(str_detect(gongying_all$headline, pattern = "交流") == TRUE,
+                                1, 0), 
+         united_nations =ifelse(str_detect(gongying_all$headline, pattern = "联合国") == TRUE,
+                                1, 0), 
+         climate_change = ifelse(str_detect(gongying_all$headline, pattern = "气候变化") == TRUE,
+                                1, 0), 
+         boao_forum = ifelse(str_detect(gongying_all$headline, pattern = "博鳌亚洲论坛") == TRUE,
+                                1, 0),
+         silk_road = ifelse(str_detect(gongying_all$headline, pattern = "丝绸之路") == TRUE,
+                                1, 0), 
+         asean = ifelse(str_detect(gongying_all$headline, pattern = "东盟") == TRUE,
+                                1, 0), 
+         apec = ifelse(str_detect(gongying_all$headline, pattern = "亚太经合组织") == TRUE,
+                                1, 0), 
+         security = ifelse(str_detect(gongying_all$headline, pattern = "安全") == TRUE,
+                                1, 0), 
+         state_owned_enterprise = ifelse(str_detect(gongying_all$headline, 
+                                                    pattern = "国有企业") == TRUE,
+                                1, 0), 
+         china_dream = ifelse(str_detect(gongying_all$headline, pattern = "中国梦") == TRUE,
+                                1, 0), 
+         globalization = ifelse(str_detect(gongying_all$headline, 
+                                                    pattern = "全球化") == TRUE,
+                                1, 0), 
+         int_coop_bri_forum = ifelse(str_detect(gongying_all$headline, 
+                                                    pattern = "国际合作高峰论坛") == TRUE,
+                                1, 0))
+
+
+str_detect(gongying_all$headline, 
+                                                    pattern = "平安") %>% 
+  sum()
+  
+#summary table for keyword policy binaries 
+headline_topic_summaries <- headline_binaries %>% 
+  summarize(belt_and_road = sum(belt_and_road, na.rm = TRUE),
+          community_of_common_destnity =  sum(community_of_common_destnity, na.rm = TRUE),
+          xi_jinping =sum(xi_jinping, na.rm = TRUE),
+          hu_jintao = sum(hu_jintao, na.rm = TRUE),
+          go_out_policy = sum(go_out_policy, na.rm = TRUE),
+          opening_up = sum(opening_up, na.rm = TRUE),
+          exchange = sum(exchange, na.rm = TRUE), 
+          united_nations = sum(united_nations, na.rm = TRUE),
+          climate_change = sum(climate_change, na.rm = TRUE),
+          asean = sum(asean, na.rm = TRUE),
+          apec = sum(asean, na.rm = TRUE),
+          boao_forum = sum(boao_forum, na.rm = TRUE),
+          security = sum(security, na.rm = TRUE),
+          int_coop_bri_forum = sum(int_coop_bri_forum, na.rm = TRUE)) %>%
+  print()
+
+#transpose  to keyword, count dataframe
+headline_topic_summaries_transposed <- transpose(headline_topic_summaries)
+colnames(headline_topic_summaries_transposed) <- rownames(headline_topic_summaries)
+rownames(headline_topic_summaries_transposed) <- colnames(headline_topic_summaries)
+
+headline_topic_summaries <- setDT(headline_topic_summaries_transposed, keep.rownames = TRUE) %>%
+  rename("tag" = rn, "total_mentions" = '1')
+
+#plot
+
+#we have a bunch of factors - is there a better way than a bar chart?
+
+headline_terms_plot <- ggplot(headline_topic_summaries, aes(x = reorder(tag, total_mentions), y = total_mentions)) + 
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "What Terms Appear Alongside 'Win-Win' in Headlines?") +
+  xlab("Other Terms in Headlines") +
+  ylab("Total Articles Including 'Win-Win' and Term")
+  theme(axis.text.x=element_text(angle = -90, hjust = .05)) +
+  theme_fivethirtyeight() + 
+  theme(plot.title = element_text(size = 8))
+
+
+
+headline_terms_plot
+
+          
+```
+
+
+
+
+
+
