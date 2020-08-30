@@ -117,6 +117,10 @@ peoples_daily_df <- data.frame(headline, dates, key_word_tags)
 
 peoples_daily_df
 
+#semi-randomized delay so we don't send too many requests
+wait_time <- runif(1, .8, 1.8)
+Sys.sleep(wait_time)
+
 }
 
 ```
@@ -387,12 +391,20 @@ english_common_keys <- c(
 "win-win",				
 "Mutual benefit",
 "Belt and Road",
-"Cooperation")
+"Cooperation") %>%
+  as.data.frame()
 
-common_keys <- cbind(common_keys, english_common_keys) %>% 
-  rename("tag_english" = english_common_keys) %>%
-  select(tag, tag_english, total_mentions, rank) %>% 
-  print()
+
+common_keys <- english_common_keys %>%
+  select('.') %>% 
+  cbind(common_keys) %>% 
+  rename("tag_english" = '.') %>%
+  select(tag, tag_english, total_mentions, rank)
+
+
+#common_keys <- cbind(common_keys, english_common_keys) %>% 
+#  rename("tag_english" = english_common_keys) %>%
+#  select(tag, tag_english, total_mentions, rank)
 
 ```
 
@@ -805,9 +817,10 @@ These keywords are all still in Chinese, so once again we'll take the most frequ
 ```{r english bilaterial relations}
 
 #we need an english key to graph this, lets get all unique tags first 
+
 gja_tag_english <- c(
 "China-Africa relations",
-"win-win",				
+"Win-Win",				
 "Develop together",				
 "Friendship",
 "Mutual benefit",
@@ -815,7 +828,7 @@ gja_tag_english <- c(
 "Business",
 "Community of Destiny",
 "Neocolonialism", 
-"access",
+"Access",
 "Commentator",
 "Africa-China Cooperation",
 "Policy",
@@ -844,9 +857,20 @@ gja_tag_english <- c(
 "win-win",
 "Dialouge") 
 
+```
+
+this is where myknit code is having trouble. lets try using a right join or left join instead 
+
+
+```{r join english topics to mandarin}
+
 #add english to dataframe 
-gja_topics_totals <- gja_topics_totals %>%
-  cbind(gja_tag_english)
+gja_topics_totals_english <- gja_topics_totals %>%
+  cbind(gja_tag_english) %>% 
+  #clean up names
+  rename("tag_english" = '...5') %>%
+  #keep only what we need 
+  select(country, tag, total_mentions, rank, tag_english)
 ```
 
 \newpage 
@@ -861,18 +885,28 @@ We see here that topics highlighted vary greatly from region to region. In Afric
 ```{r plotting bilateral win-win topics}
 
 #plotting
-gja_topics_plot <-  gja_topics_totals  %>% 
+gja_topics_plot <-  gja_topics_totals_english  %>% 
   #filter out redundant synonyms or little-used phrases
- filter(tag_english != "China-Africa relations", tag_english != "Sino-German relations", 
-        tag_english != "China-Japan Relationship", tag_english!= "win-win", 
-        tag_english != "Mutual benefit", tag_english != "Policy", 
-        tag_english != "Make a big cooperation cake", tag_english != "EU", 
-        tag_english != "China", tag_english != "Africa-China Cooperation", 
-        tag_english != "China dream", tag_english != "Commentator", 
+ filter(tag_english != "China-Africa relations",
+        tag_english != "Sino-German relations", 
+        tag_english != "China-Japan Relationship", 
+        tag_english!= "win-win", 
+        tag_english != "Mutual benefit",
+        tag_english != "Policy", 
+        tag_english != "Make a big cooperation cake", 
+        tag_english != "EU", 
+        tag_english != "China", 
+        tag_english != "Africa-China Cooperation", 
+        tag_english != "China dream",
+        tag_english != "Commentator", 
         tag_english != "Cooperation") %>% 
-  #include 
+  #combine economy and trade into a common tag 
   mutate(tag = ifelse(tag == "经济", "经贸合作", tag), 
-         tag_english = ifelse(tag == "经贸合作", "Economic and Trade Cooperation", tag_english)) %>% 
+         tag_english = ifelse(tag == "经贸合作", 
+                              "Economic and Trade Cooperation",
+                              tag_english))
+#begin plotting 
+gja_topics_plot <- gja_topics_plot %>%
   ggplot(aes(x = reorder(tag_english, total_mentions), y = total_mentions,
              fill = total_mentions)) + 
   geom_bar(stat = "identity") +
@@ -899,7 +933,7 @@ gja_topics_plot <-  gja_topics_totals  %>%
                                     colour = "dimgray", size = 6.5),  
         legend.text = element_text(colour = "dimgray"),
         axis.text.y = element_text(colour = "dimgray"),
-        axis.text.x = element_text(color = "dimgray"),
+        axis.text.x = element_text(color = "dimgray", size = 7.5),
         axis.title.x = element_text(vjust = -.8, color = "black"),
         #remove axis line and fill color legend
         axis.line.y = element_blank(),
@@ -909,177 +943,4 @@ gja_topics_plot <-  gja_topics_totals  %>%
 gja_topics_plot
 
 ```
-The chart above gives us a better understanding of the general focus of policy discussions in each region. But are there specific phrases, leaders, or key policies that are also often discussed in tandem with "win-win". Instead of looking to the keywords, what if we try and pull this information out from the headlines themselves? 
-
-To get a sesne of this, I investigated a few key phrases and policies that are often mentioned in key policy documents on national security and foreign policy, as well as popular slogans and phrases. These are terms I thought merited more investigation based on my qualitative research. I'd be interested to see what unique terms came from the headlines themselves. It's a new tool to me, but perhaps some natural language processing could be used to find other unique phrases from headlines that merit more investigation. 
-
-The result is a very wide table of headlines. The columns reflect wheter or not a headline includes a given phrase, taking on a value of 1 if that phrase is included and 0 otherwise. We'll count the 1s and 0s in each of these columns to find out how often each topic is mentioned. 
-
-This also has a lot of copy pasted text. In the future I could improve this by creating a function that combines the ifelse and str_detect calls and takes on the chinese phrase as an argument. 
-
-
-```{r policies in headlines}
-
-#text example:   全球战疫没有输赢只有共赢（钟声）
-
-#we basically just want to extract antyhing that contains what we are interested in
-
-headline_binaries <- gongying_all %>% 
-  mutate(belt_and_road = ifelse(str_detect(gongying_all$headline, 
-                                           pattern = "一带一路") == TRUE,
-                                1, 0), 
-         community_of_common_destnity = 
-           ifelse(str_detect(gongying_all$headline,
-                             pattern = "人类命运共同体") == TRUE,  1, 0),
-         financial_crisis =
-           ifelse(str_detect(gongying_all$headline,
-                             pattern = "金融危机") == TRUE,
-                                1, 0), 
-         xi_jinping = 
-           ifelse(str_detect(gongying_all$headline, 
-                             pattern = "习近平") == TRUE,
-                                1, 0), 
-         go_out_policy =
-           ifelse(str_detect(gongying_all$headline, 
-                             pattern = "走出去") == TRUE,
-                                1, 0), 
-         hu_jintao = 
-           ifelse(str_detect(gongying_all$headline, 
-                             pattern = "胡锦涛") == TRUE,
-                                1, 0), 
-         opening_up = 
-           ifelse(str_detect(gongying_all$headline, 
-                             pattern = "开放") == TRUE,
-                                1, 0),  
-         exchange = 
-           ifelse(str_detect(gongying_all$headline, 
-                             pattern = "交流") == TRUE,
-                                1, 0), 
-         united_nations = 
-           ifelse(str_detect(gongying_all$headline,
-                             pattern = "联合国") == TRUE,
-                                1, 0), 
-         climate_change = 
-           ifelse(str_detect(gongying_all$headline, 
-                             pattern = "气候变化") == TRUE,
-                                1, 0), 
-         boao_forum = 
-           ifelse(str_detect(gongying_all$headline, 
-                             pattern = "博鳌亚洲论坛") == TRUE,
-                                1, 0),
-         silk_road = 
-           ifelse(str_detect(gongying_all$headline,
-                             pattern = "丝绸之路") == TRUE,
-                                1, 0), 
-         asean = 
-           ifelse(str_detect(gongying_all$headline, 
-                             pattern = "东盟") == TRUE,
-                                1, 0), 
-         apec = 
-           ifelse(str_detect(gongying_all$headline, 
-                             pattern = "亚太经合组织") == TRUE,
-                                1, 0), 
-         security = 
-           ifelse(str_detect(gongying_all$headline, 
-                             pattern = "安全") == TRUE,
-                                1, 0), 
-         state_owned_enterprise = 
-           ifelse(str_detect(gongying_all$headline,
-                             pattern = "国有企业") == TRUE,
-                                1, 0), 
-         china_dream = 
-           ifelse(str_detect(gongying_all$headline, 
-                             pattern = "中国梦") == TRUE,
-                                1, 0), 
-         globalization = 
-           ifelse(str_detect(gongying_all$headline,
-                             pattern = "全球化") == TRUE,
-                                1, 0), 
-         int_coop_bri_forum =
-           ifelse(str_detect(gongying_all$headline, 
-                             pattern = "国际合作高峰论坛") == TRUE,
-                                1, 0))
-```
-Next, we create a summary stable that shows how often unique terms were mentioned. We sum each of our columns and igore missing values. To lay things out more clearly, we change columns to rows below. 
-  
-```{r cleaning and summarizing unique term counts}  
-#summary table for keyword policy binaries 
-headline_topic_summaries <- headline_binaries %>% 
-  summarize(belt_and_road = sum(belt_and_road, na.rm = TRUE),
-          community_of_common_destnity =  sum(community_of_common_destnity, na.rm = TRUE),
-          xi_jinping =sum(xi_jinping, na.rm = TRUE),
-          hu_jintao = sum(hu_jintao, na.rm = TRUE),
-          go_out_policy = sum(go_out_policy, na.rm = TRUE),
-          opening_up = sum(opening_up, na.rm = TRUE),
-          exchange = sum(exchange, na.rm = TRUE), 
-          united_nations = sum(united_nations, na.rm = TRUE),
-          climate_change = sum(climate_change, na.rm = TRUE),
-          asean = sum(asean, na.rm = TRUE),
-          apec = sum(asean, na.rm = TRUE),
-          boao_forum = sum(boao_forum, na.rm = TRUE),
-          security = sum(security, na.rm = TRUE),
-          int_coop_bri_forum = sum(int_coop_bri_forum, na.rm = TRUE)) %>%
-  print()
-#collapse into just two columns - topic and mentions 
-headline_topic_summaries <- pivot_longer(headline_topic_summaries, everything(), names_to = "topics") %>% 
-  rename("total_mentions" = value)
-```
-
-\newpage 
-
-## Visualizing Unique Terms in Win-Win Headlines
-
-We'll again used a bar chart to visualize how often specific phrases are included in headlines alongside "win-win."
-
-Once again, Belt and Road dominates other topics. But it's notable that security is a relatively common phrase. Some of the specific policy initiatives or security forums we might expect to be highlighted (like the Shanghai Cooperation Organization), however, are only rarely mentioned.  Instead, economic forums and initiatives are much more often discussed - and most are associated with the Belt and Road Initiative. 
-
-```{r visualizing unique key words}
-#plot
-
-#we have a bunch of factors - is there a better way than a bar chart?
-
-headline_terms_plot <- ggplot(headline_topic_summaries, 
-                              aes(x = reorder(topics, total_mentions),
-                                  y = total_mentions, 
-                                  fill = total_mentions)) + 
-  geom_bar(stat = "identity") +
-  coord_flip() +
-  #set color gradient manually to better fit
-  scale_fill_gradient(low = "lightgreen", high = "darkgreen") +
-  #intuitive labels/titles
-  labs(title = "What Terms Appear Alongside 'Win-Win' in Headlines?") +
-  xlab("Other Terms in Headlines") +
-  ylab("Total Articles Including 'Win-Win' and Term") +
-  #build on theme 
-  theme(axis.text.x=element_text(angle = -90, hjust = .05)) +
-  theme_economist_white() +
-   theme(
-        #adjust title and subtitle position
-        plot.title = element_text(hjust = .5, size = 12.5),  
-        plot.subtitle = element_text(hjust = .5, size = 11), 
-        #remove grid 
-        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),   
-        #remove white background
-        panel.background = element_blank(),           
-        #change caption, legend, axis text to gray text
-        plot.caption = element_text(hjust = 1, vjust = -3, 
-                                    colour = "dimgray", size = 6.5),  
-        legend.text = element_text(colour = "dimgray"),
-        axis.text.y = element_text(colour = "dimgray"),
-        axis.text.x = element_text(color = "dimgray"),
-        axis.title.x = element_text(vjust = -.8, color = "black"),
-        #remove axis line and fill color legend
-        axis.line.y = element_blank(),
-        axis.title.y = element_blank(), 
-        legend.position = "none")
-
-headline_terms_plot
-
-          
-```
-
-
-
-
-
 
