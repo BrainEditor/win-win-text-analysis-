@@ -21,4 +21,7 @@ This is my first text scraping project, and the code has room for improvement. C
 
 ## Supporting Documents: Research Paper and Policy Memo
 
-In addition to the R code and knitted PDF, I've also included a long-form paper that contextualizes my findings and explores some of their implications in detail. In addition, there's a practice poliy memo written for an imagined State Department decision maker. This was an excercise in using research to make a data-driven policy recommendation, and doesn't neccessarily reflect my opinion of what the State Department should actually do.
+In addition to the R code and knitted html, I've also included a long-form paper that contextualizes my findings and explores some of their implications in detail. There's a practice poliy memo written for an imagined State Department decision maker. This was an excercise in using research to make a data-driven policy recommendation, and doesn't neccessarily reflect my opinion of what the State Department should actually do.
+
+I've also added each graph as a png file on github so they are easily accessible. 
+
