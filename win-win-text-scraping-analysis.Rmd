@@ -271,10 +271,12 @@ gongying %>%
   group_by(years) %>% 
   summarise(total_mentions = n()) %>% 
   filter(years != "2020") %>%
-  ggplot(aes(x = years, y = total_mentions)) + 
+  ggplot(aes(x = years, y = total_mentions, fill = total_mentions)) + 
   geom_bar(stat = "identity") + 
+  scale_fill_gradient(low = "lightgreen", high = "darkgreen") +
   geom_smooth(se = FALSE) +
-  labs(title = "'Win-Win' in People's Daily Headlines Over Time (gongying)",  subtitle = "2000 to 2019") + 
+  labs(title = "'Win-Win' in People's Daily Headlines Over Time (gongying)",  
+       subtitle = "2000 to 2019") + 
   xlab("year") + 
   ylab("Total Headlines with gongying") +
    #build aesthetic style on existing theme
@@ -290,7 +292,7 @@ gongying %>%
         #change caption, legend, axis text to gray text
         plot.caption = element_text(hjust = 1, vjust = -3, 
                                     colour = "dimgray", size = 6.5),  
-        legend.text = element_text(colour = "dimgray"),
+        legend.position = ,
         axis.text.y = element_text(colour = "dimgray"),
         axis.text.x = element_text(color = "dimgray"),
         axis.title.x = element_text(vjust = -.8, color = "black"))
