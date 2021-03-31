@@ -31,7 +31,6 @@ peoples_daily_archived <- read_html(peoples_daily_archived_page)
 ```
 
 
-
 Now that we have our webpage, we can try and identify the nodes we are interested in. 
 
 Let's just start with the article itself first. We'll pull out the body nodes. 
@@ -131,23 +130,75 @@ Next, we iterate that function over all the pages for a search result. We can us
 
 I could improve this by generalizing. If I scrape the first and last page numbers from the website, and put that in my function, I could maybe use that value to replace the manually entered digits. All the pages chop off the page No at the same spot, so then I'd just have to enter the URL for my search at that should work to generalize.
 
+*for stephen* 
+
 
 
 ```{r iterating function over page range}
 #iterate over page functions
 
-seperate_pages_as_df <- lapply(paste0("http://data.people.com.cn/rmrb/s?qs=%7B%22cds%22%3A%5B%7B%22cdr%22%3A%22AND%22%2C%22cds%22%3A%5B%7B%22fld%22%3A%22title%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%85%B1%E8%B5%A2%22%7D%2C%7B%22fld%22%3A%22subTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%85%B1%E8%B5%A2%22%7D%2C%7B%22fld%22%3A%22introTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%85%B1%E8%B5%A2%22%7D%5D%7D%5D%2C%22obs%22%3A%5B%7B%22fld%22%3A%22dataTime%22%2C%22drt%22%3A%22DESC%22%7D%5D%7D&tr=A&ss=1&pageNo=", 1:45),
-                               #there are 45 pages of search results
+seperate_pages_as_df <- lapply(paste0("http://data.people.com.cn/rmrb/s?qs=%7B%22cds%22%3A%5B%7B%22cdr%22%3A%22AND%22%2C%22cds%22%3A%5B%7B%22fld%22%3A%22title%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22AND%22%2C%22qtp%22%3A%22DEF%22%2C%22val%22%3A%22%E5%85%B1%E8%B5%A2%22%7D%2C%7B%22fld%22%3A%22subTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22false%22%2C%22vlr%22%3A%22AND%22%2C%22qtp%22%3A%22DEF%22%2C%22val%22%3A%22%E5%85%B1%E8%B5%A2%22%7D%2C%7B%22fld%22%3A%22introTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22false%22%2C%22vlr%22%3A%22AND%22%2C%22qtp%22%3A%22DEF%22%2C%22val%22%3A%22%E5%85%B1%E8%B5%A2%22%7D%5D%7D%5D%2C%22obs%22%3A%5B%7B%22fld%22%3A%22dataTime%22%2C%22drt%22%3A%22DESC%22%7D%5D%7D&tr=A&ss=1&pageNo=", 1:47),
+                               #there are 47 pages of search results
        get_article_keys_dates)
-
-
 ```
 I now have a list of 44 dataframe with all the information I need, so lets combine them into one dataframe. 
 
 
 ```{r merging to one dataframe, write to CSV}
 gongying_all <- bind_rows(seperate_pages_as_df)
+
+##for stephen -- write to csv 
 ```
+
+*for stephen* This is all the code I need you to run, you can stop here and then write to csv You may need to search for 共赢 yourself in the database, copy paste the link into the code, and then delete everything after "pageNo=" in the link's text.  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 \newpage
 
