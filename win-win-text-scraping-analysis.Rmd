@@ -105,8 +105,11 @@ cc_winwin_over_time <- gongying %>%
 #theming
   theme_wsj() +
     theme(text = element_text(size = 7)) +
-  ggtitle("'Win-Win' Increasingly Popular in State Media") +
-  ylab("People's Daily Articles With Win-Win in The Headline") +
+  scale_x_continuous(breaks = 2000:2019) +
+  ggtitle("'Win-Win' Diplomacy in State Media") +
+  labs(subtitle = "People's Daily Headlines With 'Win-Win'") +
+  ylab("Articles with 'Win-Win' in Headline") +
+  xlab("") +
   theme(legend.position="none", plot.title = element_text(size = 9, 
                                                           face = "bold"),
         plot.subtitle = element_text(size = 8), 
@@ -115,7 +118,7 @@ cc_winwin_over_time <- gongying %>%
         axis.title.x = element_text(color = "#000001", size=7, 
                                     vjust=.9, face = "bold"),
         axis.text.x = element_text(color="#000001", 
-                           size=6, angle=345, face = "bold")) + 
+                           size=6, face = "bold")) + 
   guides(fill=guide_legend(title="")) +
   labs(caption = c("©ChinaCharts", 
                    "Source: People's Daily Database")) +
