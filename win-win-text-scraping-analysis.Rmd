@@ -18,138 +18,43 @@ library(purrr)
 library(tidyr)
 library(tidyverse)
 library(ggthemes)
+library(png)
 ```
 
+In this branch, I'm just using the text data I scrape back in August 2020. I load that in below.
 
-# Getting Started: Pulling Out the Data 
-First we need to load in our data, which is one page of search results.
+```{r loading in data}
 
-```{r loading data}
-peoples_daily_archived_page <- "http://data.people.com.cn/rmrb/s?type=1&qs=%7B%22cds%22%3A%5B%7B%22cdr%22%3A%22AND%22%2C%22cds%22%3A%5B%7B%22fld%22%3A%22title%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22AND%22%2C%22qtp%22%3A%22DEF%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2+%E5%8F%B0%E6%B9%BE%22%7D%2C%7B%22fld%22%3A%22subTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22false%22%2C%22vlr%22%3A%22AND%22%2C%22qtp%22%3A%22DEF%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2+%E5%8F%B0%E6%B9%BE%22%7D%2C%7B%22fld%22%3A%22introTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22false%22%2C%22vlr%22%3A%22AND%22%2C%22qtp%22%3A%22DEF%22%2C%22val%22%3A%22%E5%8F%8C%E8%B5%A2+%E5%8F%B0%E6%B9%BE%22%7D%5D%7D%5D%2C%22obs%22%3A%5B%7B%22fld%22%3A%22dataTime%22%2C%22drt%22%3A%22DESC%22%7D%5D%7D"
+gongying <- read.csv("win_win_cleaned_data2.csv", encoding = "UTF-8")
 
-peoples_daily_archived <- read_html(peoples_daily_archived_page)
-```
-
-
-
-Now that we have our webpage, we can try and identify the nodes we are interested in. 
-
-Let's just start with the article itself first. We'll pull out the body nodes. 
-
-```{r article node trial}
-
-str(peoples_daily_archived)
-
-body_nodes <- peoples_daily_archived %>% 
-  html_node("body") %>% 
-  html_children()
+chinachart_logo <- readPNG("china_charts_logo.png")
 
 ```
 
-We're interested in getting the article headline text, dates, and the keyword tags associated with each article.
+I'm trying to incorporate the themeing for @ChinaCharts. Here's an example of their style
 
-What's the html code structure for each of those?
-
-The nodes for all articles results are <div class="sreach_li">
-
-Within that, the date is <div class="listinfo"
-
-Keywords are <div class="keywords">...</div>  then " some text " then they are surrounded in the following code <a href="#">卫生</a>
-
-We can use xml_find_all to find all the div nodes in the body of the document that have a class name containing the class names we want. Luckily, extracting these is pretty easy, we just provide the class name. 
+```{r china charts style}
 
 
-```{r tracking down key nodes}
+   scale_fill_economist() +
+  theme_wsj() +
+    theme(text = element_text(size = 7)) +
+  ggtitle("Monthly Retail Consumption ($), China, 01/19-02/21") +
+  scale_y_continuous() +
+  theme(legend.position="top", plot.title = element_text(size = 9, face = "bold"), 
+        axis.title.y = element_text(color = "#000001", size=7, 
+                                    vjust=1.9, face = "bold"), 
+        axis.text.x = element_text(color="#000001", 
+                           size=6, angle=345, face = "bold")) + 
+  guides(fill=guide_legend(title="")) +
+  labs(caption = c("©ChinaCharts", "Source: NBS/Exchange Rate=Monthly Avg")) +
+  theme(plot.caption = element_text(hjust=c(1, 0), face =c("plain", "italic"), 
+                                  size = 6))
 
-#three vectors for each variable we are interested in 
-dates <- peoples_daily_archived %>% 
-  html_nodes('body') %>% 
-  xml_find_all("//div[contains(@class, 'listinfo')]") %>% 
-  html_text()
-
-key_word_tags <- peoples_daily_archived %>% 
-  html_nodes('body') %>% 
-  xml_find_all("//div[contains(@class, 'keywords')]") %>% 
-  html_text()
-
-headline <- peoples_daily_archived %>% 
-  html_nodes('body') %>% 
-  xml_find_all("//a[contains(@class, 'open_detail_link')]") %>% 
-  html_text()
-
-```
-
-Great! Right now we have vectors for each different variable. Next, we'll stitch them all into a data frame.
-
-```{r data frame making}
-peoples_daily_df <- data.frame(headline, dates, key_word_tags) 
-```
-
-This works for one page, but it'd be better to have a function that automates all this work over all the search results. 
-
-The function below takes the URL as an argument and gives us a dataframe for headlines, dates, and keywords. 
-
-```{r making a scraping function}
-get_article_keys_dates <- function(webpage = "url") { 
-  
-  #progress indicator
-  cat("scraped_")
-  
-  #get url from input and read html 
-  input <- read_html(webpage)
-  
-  #scrape data 
-  dates <- input %>% 
-  html_nodes('body') %>% 
-  xml_find_all("//div[contains(@class, 'listinfo')]") %>% 
-  html_text()
-
-key_word_tags <- input %>% 
-  html_nodes('body') %>% 
-  xml_find_all("//div[contains(@class, 'keywords')]") %>% 
-  html_text
-
-headline <- input %>% 
-  html_nodes('body') %>% 
-  xml_find_all("//a[contains(@class, 'open_detail_link')]") %>% 
-  html_text
-
-#semi-randomized delay so we don't send too many requests
-wait_time <- runif(1, .8, 10)
-Sys.sleep(wait_time)
-
-#create dataframe
-peoples_daily_df <- data.frame(headline, dates, key_word_tags) 
-
-peoples_daily_df
-}
 
 ```
 
 
-Next, we iterate that function over all the pages for a search result. We can use lapply to create a list of dataframes with scraped text.
-
-I could improve this by generalizing. If I scrape the first and last page numbers from the website, and put that in my function, I could maybe use that value to replace the manually entered digits. All the pages chop off the page No at the same spot, so then I'd just have to enter the URL for my search at that should work to generalize.
-
-
-
-```{r iterating function over page range}
-#iterate over page functions
-
-seperate_pages_as_df <- lapply(paste0("http://data.people.com.cn/rmrb/s?qs=%7B%22cds%22%3A%5B%7B%22cdr%22%3A%22AND%22%2C%22cds%22%3A%5B%7B%22fld%22%3A%22title%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%85%B1%E8%B5%A2%22%7D%2C%7B%22fld%22%3A%22subTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%85%B1%E8%B5%A2%22%7D%2C%7B%22fld%22%3A%22introTitle%22%2C%22cdr%22%3A%22OR%22%2C%22hlt%22%3A%22true%22%2C%22vlr%22%3A%22OR%22%2C%22val%22%3A%22%E5%85%B1%E8%B5%A2%22%7D%5D%7D%5D%2C%22obs%22%3A%5B%7B%22fld%22%3A%22dataTime%22%2C%22drt%22%3A%22DESC%22%7D%5D%7D&tr=A&ss=1&pageNo=", 1:45),
-                               #there are 45 pages of search results
-       get_article_keys_dates)
-
-
-```
-I now have a list of 44 dataframe with all the information I need, so lets combine them into one dataframe. 
-
-
-```{r merging to one dataframe, write to CSV}
-gongying_all <- bind_rows(seperate_pages_as_df)
-```
-
-\newpage
 
 # Cleaning Up Our Scraped Data
 
@@ -160,86 +65,13 @@ It would also be helpful to create three separate columns for keywords 1, 2, and
 Each keyword is separated by a space, so we'll use this to our advantage. 
 
 
-```{r dates cleaning}
-
-
-#cleaning out the /t and /r noise 
-gongying_all$dates <- str_squish(gongying_all$dates)
-gongying_all$key_word_tags <- str_squish(gongying_all$key_word_tags)
-
-#converting to ymd dates, no characters 
-  #remember single digit months/days have no empty 0 in front,
-  #need optional values in substring
-
-#example date: 2020年5月19日第3版 【浏览本版】
-
-gongying_all$dates <- str_extract_all(gongying_all$dates,
-                                      "\\d\\d\\d\\d.\\d?\\d.\\d?\\d") #just date
-
-gongying_all$year <- str_extract_all(gongying_all$dates, 
-                                     "\\d\\d\\d\\d") %>% #year 
-  as.numeric()
-
-gongying_all$day <- str_extract(string =  gongying_all$dates,
-                                "\\d?\\d$") %>% #mday 
-  as.numeric() 
-
-gongying_all$month <- str_extract_all(gongying_all$dates, 
-                                      "\\d?\\d月")  %>%   #month
-                                str_extract_all("\\d?\\d") %>% 
-                                      as.numeric()
-
-gongying_all <- gongying_all %>%  #remove old column with characters 
-   select(-dates)
-
-#stitch date back together, cleaned
-gongying_all$date <- paste(gongying_all$year, gongying_all$month, gongying_all$day, sep = "-") %>% 
-           ymd() %>% 
-           as.Date()
-```
 
 We've cleaned dates, now we use some of the same tools to clean up keywords. 
 
 Remember, we want to make multiple columns for each key word. Keywords are seperated by spaces. 
 
-```{r keywords cleaning}
-
-#lets start by droping the junky tag at the beginning 
-
-#example entry      文章关键词： 合作 “一带一路” 塞尔维亚
-
-gongying_all$test_keywords <- str_extract_all(gongying_all$key_word_tags,
-                                              "[^文章关键词]") 
-
-gongying_all$key_word_tags <- str_remove_all(gongying_all$key_word_tags,
-                                             "^.......")
-
-#create new columns for each keyword 
-gongying_all<- gongying_all %>% 
-  separate(key_word_tags, c("tag_1", "tag_2", "tag_3"),
-           sep = " ", 
-           remove = FALSE,
-           extra = "warn", 
-           fill = "warn")
-
-gongying_all <- gongying_all %>%          #drop columns we don't need anymore 
-  select(-key_word_tags, -test_keywords)
-
-#last cleaning to standardize gongying with our function 
-gongying <- gongying_all %>% 
-  rename("years" = year)
-
-```
 I'll also save the raw, uncleaned data-frame on my local machine, so that we don't have to keep sending a ton of requests to the online archive. That way, when working on this project in the future, we can just reference the data we've already scraped, rather than re-scraping every time. 
 
-```{r writing cleaned data to csv}
-#save as a csv locally, which will be pushed to github 
-write_csv(gongying, "win_win_cleaned_data2.csv")
-
-#read that document in, specify we have chinese characters with UTF encoding
-gongying <- read.csv("win_win_cleaned_data2.csv", stringsAsFactors = FALSE, 
-          encoding = "UTF-8")
-```
 
 
 \newpage 
@@ -263,39 +95,38 @@ I'll also plot they keyword usage over time.
 
 ```{r exploring}
 
-#how has frequency of the term changed over time? 
-
-
-#gongying 
-gongying %>% 
+##cc version
+cc_winwin_over_time <- gongying %>% 
   group_by(years) %>% 
   summarise(total_mentions = n()) %>% 
   filter(years != "2020") %>%
-  ggplot(aes(x = years, y = total_mentions, fill = total_mentions)) + 
-  geom_bar(stat = "identity") + 
-  scale_fill_gradient(low = "lightgreen", high = "darkgreen") +
-  geom_smooth(se = FALSE) +
-  labs(title = "'Win-Win' in People's Daily Headlines Over Time (gongying)",  
-       subtitle = "2000 to 2019") + 
-  xlab("year") + 
-  ylab("Total Headlines with gongying") +
-   #build aesthetic style on existing theme
-  theme_economist_white() + 
-  theme(
-        #adjust title and subtitle position
-        plot.title = element_text(hjust = .5, size = 12.5),  
-        plot.subtitle = element_text(hjust = .5, size = 11), 
-        #remove grid 
-        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),   
-        #remove white background
-        panel.background = element_blank(),           
-        #change caption, legend, axis text to gray text
-        plot.caption = element_text(hjust = 1, vjust = -3, 
-                                    colour = "dimgray", size = 6.5),  
-        legend.position = ,
-        axis.text.y = element_text(colour = "dimgray"),
-        axis.text.x = element_text(color = "dimgray"),
-        axis.title.x = element_text(vjust = -.8, color = "black"))
+  ggplot(aes(x = years, y = total_mentions)) + 
+  geom_bar(stat = "identity", fill = "#004374") + 
+#theming
+  theme_wsj() +
+    theme(text = element_text(size = 7)) +
+  ggtitle("'Win-Win' Increasingly Popular in State Media") +
+  ylab("People's Daily Articles With Win-Win in The Headline") +
+  theme(legend.position="none", plot.title = element_text(size = 9, 
+                                                          face = "bold"),
+        plot.subtitle = element_text(size = 8), 
+        axis.title.y = element_text(color = "#000001", size=7, 
+                                    vjust=.9, face = "bold"),
+        axis.title.x = element_text(color = "#000001", size=7, 
+                                    vjust=.9, face = "bold"),
+        axis.text.x = element_text(color="#000001", 
+                           size=6, angle=345, face = "bold")) + 
+  guides(fill=guide_legend(title="")) +
+  labs(caption = c("©ChinaCharts", 
+                   "Source: People's Daily Database")) +
+  theme(plot.caption = element_text(hjust=c(1, 0), face =c("plain", "italic"), 
+                                  size = 6))
+#logo
+cc_winwin_over_time <- cc_winwin_over_time
+grid::grid.raster(chinachart_logo, x=.86, y=.82, just = c('left', 'bottom'), 
+                  width = unit(1, 'inches')) 
+
+ggsave("cc_winwin_over_time.png", cc_winwin_over_time)  
 
 ```
 
@@ -432,45 +263,48 @@ Now that we have our most commonly used keywords, lets visualize them to see wha
 It will be easier to compare frequency for each term if we take our bar chart and flip it sideways, then arrange terms from most commonly used to least commonly used. I also add in a color gradient to make these differences more clear. Since all of the terms are commonly used, I use green for each (implying they are all frequently used), but just scale the green color to make the difference in popularity more apparent. 
 
 ```{r visualizing most common keys}
-common_topics_plot <- common_keys %>% 
+
+##revised @chinacharts aesthetic
+cc_common_topics_plot <- common_keys %>% 
   filter(tag_english != "China" , tag_english != "Adhere/Support" , 
          tag_english != "win-win" , tag_english != "Cooperation", 
          tag_english != "Mutual benefit") %>% 
-  ggplot(aes(x = reorder(tag_english, total_mentions), y = total_mentions,
-             fill = total_mentions)) + 
+  ggplot(aes(x = reorder(tag_english, total_mentions), y = total_mentions, 
+             fill = "#FF6666")) + 
   geom_bar(stat = "identity") +
   #easy to compare vertically in descending order
   coord_flip() +
-  #set color gradient manually to better fit
-  scale_fill_gradient(low = "lightgreen", high = "darkgreen") +
    #clean up labels, more legible
-  labs(title = "What's The Topic of Articles with 'Win-Win' in the Headline?",
-       subtitle = "Most focus on economic development and diplomacy") +
-  xlab("Article Keyword Topic") +
-  ylab("Total Articles including gongtong") +
- #build aesthetic style on existing theme
-  theme_economist_white() + 
-  theme(
-        #adjust title and subtitle position
-        plot.title = element_text(hjust = .5, size = 12.5),  
-        plot.subtitle = element_text(hjust = .5, size = 11), 
-        #remove grid 
-        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),   
-        #remove white background
-        panel.background = element_blank(),           
-        #change caption, legend, axis text to gray text
-        plot.caption = element_text(hjust = 1, vjust = -3, 
-                                    colour = "dimgray", size = 6.5),  
-        legend.text = element_text(colour = "dimgray"),
-        axis.text.y = element_text(colour = "dimgray"),
-        axis.text.x = element_text(color = "dimgray"),
-        axis.title.x = element_text(vjust = -.8, color = "black"),
-        #remove axis line and fill color legend
-        axis.line.y = element_blank(),
-        axis.title.y = element_blank(), 
-        legend.position = "none") 
-  
-  common_topics_plot
+  labs(subtitle = "Top Associations: Development & Diplomacy") +
+ #scale_fill_economist(low = "lightgreen", high= "darkgreen") +
+  theme_wsj() +
+    theme(text = element_text(size = 7)) +
+  ggtitle("How Does State Media Use the Term 'Win-Win'?") +
+  xlab("Tagged Article Topics") +
+    ylab("People's Daily Articles With Win-Win in The Headline") +
+  scale_y_continuous() +
+  scale_fill_economist() +
+  theme(legend.position="none", plot.title = element_text(size = 9, 
+                                                          face = "bold"),
+        plot.subtitle = element_text(size = 8), 
+        axis.title.y = element_text(color = "#000001", size=7, 
+                                    vjust=.9, face = "bold"),
+        axis.title.x = element_text(color = "#000001", size=7, 
+                                    vjust=.9, face = "bold"),
+        axis.text.x = element_text(color="#000001", 
+                           size=6, angle=345, face = "bold")) + 
+  guides(fill=guide_legend(title="")) +
+  labs(caption = c("©ChinaCharts", 
+                   "Source: People's Daily Database, 2000 - 2020")) +
+  theme(plot.caption = element_text(hjust=c(1, 0), face =c("plain", "italic"), 
+                                  size = 6))
+
+cc_common_topics_plot <- cc_common_topics_plot
+grid::grid.raster(chinachart_logo, x=.86, y=.82, just = c('left', 'bottom'), 
+                  width = unit(1, 'inches')) 
+
+ggsave("china_charts_common_topics.png", cc_common_topics_plot)  
+
 ```
 
 The chart above is useful, it tells us what topics win-win is generally applied to. 
@@ -494,41 +328,59 @@ important_keys_over_time <- left_join(key_word_totals_yearly,
            tag_english == "Construct/Construction" | 
          tag_english == "Economy" | 
            tag_english == "Sino-US relations" | 
-           tag_english == "Business") %>% 
+           tag_english == "Business") 
 #exclude current year
-  filter(year != "2020")
+  #filter(year != "2020")
 
-#create the plot
-important_topics_yearly <- ggplot(important_keys_over_time,
-                                  (aes(x=year, y=total_mentions, 
-                                       color = tag_english))) + 
-  geom_line(size = 2) +
+##themeing for China charts 
+cc_important_topics_yearly <- important_keys_over_time %>%
+  filter(year != "2020", 
+         tag_english == "Belt and Road" | 
+           tag_english == "Business" | 
+           tag_english == "Economy" | 
+           tag_english == "Sino-US relations" | 
+           tag_english == "Construct/Construction") %>% 
+  mutate(tag_english = ifelse(tag_english == "Construct/Construction", 
+                                 "Construction", 
+                              tag_english)) %>%
+  mutate(tag_english = ifelse(tag_english == "Business" | 
+                                 tag_english == "Economy", 
+                               "Business/Economy", tag_english)) %>%
+ggplot((aes(x=year, y=total_mentions, color = tag_english))) + 
+  geom_smooth(span = .88, size = 1.6, se = F) +
   #clean up labels, more legible
   labs(title = "How Did 'Win-Win' Usage Change For Frequent Topics?",
        color = "Article Topics") +
   xlab("year") +
-  ylab("Total Articles Including 'Win-Win'") + 
+  ylab("People's Daily Headlines Including 'Win-Win'") + 
   #change our scale so each year is shown 
-  scale_x_continuous(breaks = seq(2000, 2020, 1)) + 
- #build aesthetic style on existing theme
-  theme_economist_white() + 
-  theme(
-        #adjust title and subtitle position
-        plot.title = element_text(hjust = .5, size = 12.5),  
-        plot.subtitle = element_text(hjust = .5, size = 11), 
-        #remove grid 
-        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),   
-        #remove white background
-        panel.background = element_blank(),           
-        #change caption, legend, axis text to gray text
-        plot.caption = element_text(hjust = 1, vjust = -3, 
-                                    colour = "dimgray", size = 6.5),  
-        legend.text = element_text(colour = "dimgray", size = 8),
-        axis.text.y = element_text(colour = "dimgray"),
-        axis.text.x = element_text(color = "dimgray"),
-        axis.title.x = element_text(vjust = -.8, color = "black", size = 9))
+  scale_x_continuous(breaks = seq(2000, 2019, 1)) +
+  theme_wsj() +
+    theme(text = element_text(size = 7)) +
+  ggtitle("How Has State Media's 'Win-Win' Rhetoric Changed Over Time?") +
+  labs( subtitle = "More Focus on Belt and Road, Less on U.S.") +
+  scale_y_continuous() +
+  scale_color_economist() +
+  theme(legend.text = element_text(size = 7.5),
+        legend.title = element_text(size = 8), 
+        plot.title = element_text(size = 9, face = "bold"),
+        plot.subtitle = element_text(size = 8), 
+        axis.title.y = element_text(color = "#000001", size=7, 
+                                    vjust=1.9, face = "bold"), 
+        axis.text.x = element_text(color="#000001", 
+                           size=6, angle=345, face = "bold")) + 
+  guides(fill=guide_legend(title="")) +
+  labs(caption = c("©ChinaCharts", 
+                   "Source: People's Daily Database     2000 - 2019")) +
+  theme(plot.caption = element_text(hjust=c(1, 0), face =c("plain", "italic"), 
+                                  size = 6))
 
-important_topics_yearly
+cc_important_topics_yearly <- cc_important_topics_yearly
+grid::grid.raster(chinachart_logo, x=.86, y=.82, just = c('left', 'bottom'), 
+                  width = unit(1, 'inches')) 
+
+ggsave("china_charts_important_topics_yearly.png", cc_important_topics_yearly)  
+
 ```
 \newpage
 
@@ -699,44 +551,56 @@ bilat_africa_country_summary <- cbind(bilat_africa_country_summary, english_coun
     rename("tag_english" = english_country_keys) %>%
   select(tag, tag_english, total_mentions) 
 
+```
+
+
+```{r cc bilateral summary plot}
+cbind(bilat_africa_country_summary, english_country_keys) %>% 
+    rename("tag_english" = english_country_keys) %>%
+  select(tag, tag_english, total_mentions) 
+
 #plot data 
 
-bilat_summary_plot <- bilat_africa_country_summary  %>% 
+cc_bilat_summary_plot <- bilat_africa_country_summary  %>% 
   filter(total_mentions >= 5, tag_english != "International relations") %>% 
-  ggplot(aes(x = reorder(tag_english, total_mentions), y = total_mentions, 
-             fill = total_mentions)) + 
-  geom_bar(stat = "identity") +
+  ggplot(aes(x = reorder(tag_english, total_mentions), y = total_mentions)) + 
+  geom_bar(stat = "identity", fill = "#004374") +
   coord_flip() +
   #set color gradient manually to better fit
   scale_fill_gradient(low = "lightgreen", high = "darkgreen") +
   #intuitive labels/titles
-  labs(title = "What International Relationships Are 'Win-Win' Headlines About?") +
   xlab("Bilaterial Relationships") +
-  ylab("Total Articles Including 'Win-Win' gongtong") +
+  ylab("People's Daily Headlines Including 'Win-Win'") +
   theme(axis.text.x=element_text(angle = -90, hjust = .05)) +
   #build aesthetic style on existing theme
-  theme_economist_white() + 
-  theme(
-        #adjust title and subtitle position
-        plot.title = element_text(hjust = .5, size = 12.5),  
-        plot.subtitle = element_text(hjust = .5, size = 11), 
-        #remove grid 
-        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),   
-        #remove white background
-        panel.background = element_blank(),           
-        #change caption, legend, axis text to gray text
-        plot.caption = element_text(hjust = 1, vjust = -3, 
-                                    colour = "dimgray", size = 6.5),  
-        legend.text = element_text(colour = "dimgray"),
-        axis.text.y = element_text(colour = "dimgray"),
-        axis.text.x = element_text(color = "dimgray"),
-        axis.title.x = element_text(vjust = -.8, color = "black"),
-        #remove axis line and fill color legend
-        axis.line.y = element_blank(),
-        axis.title.y = element_blank(), 
-        legend.position = )
-  
-bilat_summary_plot
+ theme_wsj() +
+    theme(text = element_text(size = 7)) +
+  ggtitle("Where Does China Search for 'Win-Win's?") +
+  labs(subtitle = "Developed Countries & BRI Partners") +
+  scale_y_continuous() +
+  scale_color_economist() +
+  theme(axis.title.x = element_text(color = "#000001", size=7, 
+                                    vjust=1.9, face = "bold"), 
+        legend.text = element_text(size = 7.5),
+        legend.title = element_text(size = 8), 
+        plot.title = element_text(size = 9, face = "bold"),
+        plot.subtitle = element_text(size = 8), 
+        axis.title.y = element_text(color = "#000001", size=7, 
+                                    vjust=1.9, face = "bold"), 
+        axis.text.x = element_text(color="#000001", 
+                           size=6, angle=345, face = "bold")) + 
+  guides(fill=guide_legend(title="")) +
+  labs(caption = c("©ChinaCharts", 
+                   "Source: People's Daily Database     2000 - 2020")) +
+  theme(plot.caption = element_text(hjust=c(1, 0), face =c("plain", "italic"), 
+                                  size = 6))
+
+cc_bilat_summary_plot <- cc_bilat_summary_plot
+grid::grid.raster(chinachart_logo, x=.86, y=.82, just = c('left', 'bottom'), 
+                  width = unit(1, 'inches')) 
+
+ggsave("cc_bilat_summary_plot.png", cc_bilat_summary_plot)  
+
 ```
 
 Though we now know where win-win rhetoric is frequently used, we'd like to know more about what kinds of policies are being discussed as potential "win-wins". Given that the Belt and Road is such a focal point for "win-win" coverage, it seems likely that non-BRI countries are discussed in the same language as BRI countries. How, then, does the coverage of Sino-African relations differ from, say, Japan and Germany? 
@@ -891,7 +755,7 @@ We see here that topics highlighted vary greatly from region to region. In Afric
 ```{r plotting bilateral win-win topics, eval=FALSE}
 
 #plotting
-gja_topics_plot <-  gja_topics_totals_english  %>% 
+cc_gja_topics_totals_english <- gja_topics_totals_english  %>% 
   #filter out redundant synonyms or little-used phrases
  filter(tag_english != "China-Africa relations",
         tag_english != "Sino-German relations", 
@@ -910,43 +774,46 @@ gja_topics_plot <-  gja_topics_totals_english  %>%
   mutate(tag = ifelse(tag == "经济", "经贸合作", tag), 
          tag_english = ifelse(tag == "经贸合作", 
                               "Economic and Trade Cooperation",
-                              tag_english))
+                              tag_english)) %>%
 #begin plotting 
-gja_topics_plot <- gja_topics_plot %>%
   ggplot(aes(x = reorder(tag_english, total_mentions), y = total_mentions,
              fill = total_mentions)) + 
-  geom_bar(stat = "identity") +
+  geom_bar(stat = "identity", fill = "#004374") +
   facet_grid(~country) +
   coord_flip() +
   #set color gradient manually to better fit
   scale_fill_gradient(low = "lightgreen", high = "darkgreen") +
   #intuitive labels/titles
-  labs(title = "How do Win-Win Article Key Topics Differ for Germany, Japan, and Africa?", subtitle = 
-         "Developmental With Africa, Businesswith Germany, Dialouge with Japan") +
-  xlab("Tagged Topic") +
-  ylab("Total Keywords Paired with Region") + 
-  theme_economist_white() +
-  theme(
-        #adjust title and subtitle position
-        plot.title = element_text(hjust = .5, size = 10),  
-        plot.subtitle = element_text(hjust = .5, size = 9), 
-        #remove grid 
-        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),   
-        #remove white background
-        panel.background = element_blank(),           
-        #change caption, legend, axis text to gray text
-        plot.caption = element_text(hjust = 1, vjust = -3, 
-                                    colour = "dimgray", size = 6.5),  
-        legend.text = element_text(colour = "dimgray"),
-        axis.text.y = element_text(colour = "dimgray"),
-        axis.text.x = element_text(color = "dimgray", size = 7.5),
-        axis.title.x = element_text(vjust = -.8, color = "black"),
-        #remove axis line and fill color legend
-        axis.line.y = element_blank(),
-        axis.title.y = element_blank(), 
-        legend.position = "none")
-  
-gja_topics_plot
+  labs(subtitle = "Developmental With Africa, Businesswith Germany, Dialouge with Japan") +
+  ylab("Paired Article Keywords") + 
+   theme_wsj() +
+    theme(text = element_text(size = 7)) +
+  ggtitle("How do Win-Win Article Key Topics Differ for Germany, Japan, and Africa?") +
+  scale_y_continuous(breaks = c(1:20)) +
+  scale_color_economist() +
+  theme(strip.text = element_text(size = 10),
+        axis.title.x = element_text(color = "#000001", size=7, 
+                                    vjust=1.9, face = "bold"), 
+        legend.text = element_text(size = 7.5),
+        legend.title = element_text(size = 8), 
+        plot.title = element_text(size = 9, face = "bold"),
+        plot.subtitle = element_text(size = 8), 
+        axis.title.y = element_text(color = "#000001", size=7, 
+                                    vjust=4, face = "bold"), 
+        axis.text.x = element_text(color="#000001", 
+                           size=6, angle=345, face = "bold")) + 
+  guides(fill=guide_legend(title="")) +
+  labs(caption = c("©ChinaCharts", 
+                   "Source: People's Daily Database   2000 - 2020")) +
+  theme(plot.caption = element_text(hjust=c(1, 0), face =c("plain", "italic"), 
+                                  size = 6))
+
+cc_gja_topics_totals_english <- cc_gja_topics_totals_english
+grid::grid.raster(chinachart_logo, x=.16, y=.82, just = c('left', 'bottom'), 
+                  width = unit(1, 'inches')) 
+
+
+ggsave("cc_gja_topics_totals_english.png", cc_gja_topics_totals_english)  
 
 ```
 
