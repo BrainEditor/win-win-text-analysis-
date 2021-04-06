@@ -31,29 +31,6 @@ chinachart_logo <- readPNG("china_charts_logo.png")
 
 ```
 
-I'm trying to incorporate the themeing for @ChinaCharts. Here's an example of their style
-
-```{r china charts style}
-
-
-   scale_fill_economist() +
-  theme_wsj() +
-    theme(text = element_text(size = 7)) +
-  ggtitle("Monthly Retail Consumption ($), China, 01/19-02/21") +
-  scale_y_continuous() +
-  theme(legend.position="top", plot.title = element_text(size = 9, face = "bold"), 
-        axis.title.y = element_text(color = "#000001", size=7, 
-                                    vjust=1.9, face = "bold"), 
-        axis.text.x = element_text(color="#000001", 
-                           size=6, angle=345, face = "bold")) + 
-  guides(fill=guide_legend(title="")) +
-  labs(caption = c("©ChinaCharts", "Source: NBS/Exchange Rate=Monthly Avg")) +
-  theme(plot.caption = element_text(hjust=c(1, 0), face =c("plain", "italic"), 
-                                  size = 6))
-
-
-```
-
 
 
 # Cleaning Up Our Scraped Data
@@ -284,7 +261,7 @@ cc_common_topics_plot <- common_keys %>%
     theme(text = element_text(size = 7)) +
   ggtitle("How Does State Media Use the Term 'Win-Win'?") +
   xlab("Tagged Article Topics") +
-    ylab("People's Daily Articles With Win-Win in The Headline") +
+    ylab("People's Daily Articles With 'Win-Win' in The Headline") +
   scale_y_continuous() +
   scale_fill_economist() +
   theme(legend.position="none", plot.title = element_text(size = 9, 
@@ -295,7 +272,7 @@ cc_common_topics_plot <- common_keys %>%
         axis.title.x = element_text(color = "#000001", size=7, 
                                     vjust=.9, face = "bold"),
         axis.text.x = element_text(color="#000001", 
-                           size=6, angle=345, face = "bold")) + 
+                           size=6, face = "bold")) + 
   guides(fill=guide_legend(title="")) +
   labs(caption = c("©ChinaCharts", 
                    "Source: People's Daily Database, 2000 - 2020")) +
@@ -360,8 +337,8 @@ ggplot((aes(x=year, y=total_mentions, color = tag_english))) +
   scale_x_continuous(breaks = seq(2000, 2019, 1)) +
   theme_wsj() +
     theme(text = element_text(size = 7)) +
-  ggtitle("How Has State Media's 'Win-Win' Rhetoric Changed Over Time?") +
-  labs( subtitle = "More Focus on Belt and Road, Less on U.S.") +
+  ggtitle("How Has State Media's Coverage of 'Win-Win' Diplomacy Changed Over Time?") +
+  labs( subtitle = "Though Once Central to BRI Messaging, Usage Fell After 2017 Peak") +
   scale_y_continuous() +
   scale_color_economist() +
   theme(legend.text = element_text(size = 7.5),
@@ -558,10 +535,6 @@ bilat_africa_country_summary <- cbind(bilat_africa_country_summary, english_coun
 
 
 ```{r cc bilateral summary plot}
-cbind(bilat_africa_country_summary, english_country_keys) %>% 
-    rename("tag_english" = english_country_keys) %>%
-  select(tag, tag_english, total_mentions) 
-
 #plot data 
 
 cc_bilat_summary_plot <- bilat_africa_country_summary  %>% 
@@ -572,14 +545,13 @@ cc_bilat_summary_plot <- bilat_africa_country_summary  %>%
   #set color gradient manually to better fit
   scale_fill_gradient(low = "lightgreen", high = "darkgreen") +
   #intuitive labels/titles
-  xlab("Bilaterial Relationships") +
   ylab("People's Daily Headlines Including 'Win-Win'") +
   theme(axis.text.x=element_text(angle = -90, hjust = .05)) +
   #build aesthetic style on existing theme
  theme_wsj() +
     theme(text = element_text(size = 7)) +
-  ggtitle("Where Does China Search for 'Win-Win's?") +
-  labs(subtitle = "Developed Countries & BRI Partners") +
+  ggtitle("Where Does China Search for Win-Wins?") +
+  labs(subtitle = "Mostly in Developed Countries & Regions with BRI Partners") +
   scale_y_continuous() +
   scale_color_economist() +
   theme(axis.title.x = element_text(color = "#000001", size=7, 
@@ -591,8 +563,9 @@ cc_bilat_summary_plot <- bilat_africa_country_summary  %>%
         axis.title.y = element_text(color = "#000001", size=7, 
                                     vjust=1.9, face = "bold"), 
         axis.text.x = element_text(color="#000001", 
-                           size=6, angle=345, face = "bold")) + 
+                           size=6, face = "bold")) + 
   guides(fill=guide_legend(title="")) +
+  xlab("Article Topic: China's Relationship With...") +
   labs(caption = c("©ChinaCharts", 
                    "Source: People's Daily Database     2000 - 2020")) +
   theme(plot.caption = element_text(hjust=c(1, 0), face =c("plain", "italic"), 
@@ -763,6 +736,7 @@ cc_gja_topics_totals_english <- gja_topics_totals_english  %>%
  filter(tag_english != "China-Africa relations",
         tag_english != "Sino-German relations", 
         tag_english != "China-Japan Relationship", 
+        tag_english!= "Win-Win", 
         tag_english!= "win-win", 
         tag_english != "Mutual benefit",
         tag_english != "Policy", 
@@ -788,7 +762,7 @@ cc_gja_topics_totals_english <- gja_topics_totals_english  %>%
   scale_fill_gradient(low = "lightgreen", high = "darkgreen") +
   #intuitive labels/titles
   labs(subtitle = "Developmental With Africa, Businesswith Germany, Dialouge with Japan") +
-  ylab("Paired Article Keywords") + 
+  ylab("Total Articles") + 
    theme_wsj() +
     theme(text = element_text(size = 7)) +
   ggtitle("How do Win-Win Article Key Topics Differ for Germany, Japan, and Africa?") +
@@ -804,12 +778,13 @@ cc_gja_topics_totals_english <- gja_topics_totals_english  %>%
         axis.title.y = element_text(color = "#000001", size=7, 
                                     vjust=4, face = "bold"), 
         axis.text.x = element_text(color="#000001", 
-                           size=6, angle=345, face = "bold")) + 
+                           size=6, face = "bold")) + 
   guides(fill=guide_legend(title="")) +
   labs(caption = c("©ChinaCharts", 
                    "Source: People's Daily Database   2000 - 2020")) +
   theme(plot.caption = element_text(hjust=c(1, 0), face =c("plain", "italic"), 
-                                  size = 6))
+                                  size = 6)) +
+  xlab("Article Topic Associated Keyword")
 
 cc_gja_topics_totals_english <- cc_gja_topics_totals_english
 grid::grid.raster(chinachart_logo, x=.16, y=.82, just = c('left', 'bottom'), 
